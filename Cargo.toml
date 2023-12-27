@@ -1,5 +1,6 @@
 [package]
 name = "prison-architect-savefile"
+description = "Parser for prison architect savefiles"
 version = "0.1.0"
 edition = "2021"
 categories = ["parser-implementations"]
