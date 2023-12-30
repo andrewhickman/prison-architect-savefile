@@ -1,14 +1,9 @@
 mod format;
 mod parse;
 
-use std::{
-    collections::{hash_map, HashMap},
-    fmt, io,
-    path::Path,
-    vec,
-};
+pub use crate::parse::ParseError;
 
-use crate::parse::ParseError;
+use std::{collections::HashMap, fmt, io, path::Path, vec};
 
 /// Reads a prison architect savefile from the file system.
 pub fn read(path: impl AsRef<Path>) -> io::Result<Node> {
@@ -29,14 +24,14 @@ impl Node {
     }
 
     /// Parses a node from a string.
-    pub fn parse(input: &str) -> Result<Self, ParseError> {
-        input.parse()
+    pub fn parse(input: impl AsRef<str>) -> Result<Self, ParseError> {
+        input.as_ref().parse()
     }
 
     /// Reads a savefile from the file system.
     pub fn read(path: impl AsRef<Path>) -> io::Result<Self> {
         let input = fs_err::read_to_string(path)?;
-        Node::parse(&input).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
+        Node::parse(input).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
     }
 
     /// Writes a savefile to the file system.
@@ -53,40 +48,40 @@ impl Node {
     }
 
     /// Gets the property value for a given key, if it exists. If multiple values are set, the first is returned.
-    pub fn property(&self, key: &str) -> Option<&str> {
+    pub fn property(&self, key: impl AsRef<str>) -> Option<&str> {
         self.properties
-            .get(key)
+            .get(key.as_ref())
             .and_then(|value| value.first())
             .map(|value| value.as_str())
     }
 
     /// Returns true if this node contains at least one property with the given key.
-    pub fn has_property(&mut self, key: &str) -> bool {
+    pub fn has_property(&mut self, key: impl AsRef<str>) -> bool {
         self.properties
-            .get(key)
+            .get(key.as_ref())
             .map_or(false, |values| !values.is_empty())
     }
 
     /// Sets the property value for a given key. If a value is already set, it is cleared.
-    pub fn set_property(&mut self, key: &str, value: &str) {
-        let values = self.properties.entry(key.to_owned()).or_default();
+    pub fn set_property(&mut self, key: impl Into<String>, value: impl Into<String>) {
+        let values = self.properties.entry(key.into()).or_default();
         values.clear();
-        values.push(value.to_owned());
+        values.push(value.into());
     }
 
     /// Sets an additional property value for a given key. Existing values are kept.
-    pub fn add_property(&mut self, key: &str, value: &str) {
+    pub fn add_property(&mut self, key: impl Into<String>, value: impl Into<String>) {
         self.properties
-            .entry(key.to_owned())
+            .entry(key.into())
             .or_default()
-            .push(value.to_owned())
+            .push(value.into())
     }
 
     /// Removes all property values for the given key and returns them.
-    pub fn clear_property(&mut self, key: &str) -> impl Iterator<Item = String> {
-        match self.properties.entry(key.to_owned()) {
-            hash_map::Entry::Occupied(entry) => entry.remove().into_iter(),
-            hash_map::Entry::Vacant(_) => vec::IntoIter::default(),
+    pub fn clear_property(&mut self, key: impl AsRef<str>) -> impl Iterator<Item = String> {
+        match self.properties.remove(key.as_ref()) {
+            Some(properties) => properties.into_iter(),
+            None => vec::IntoIter::default(),
         }
     }
 
@@ -100,9 +95,16 @@ impl Node {
     }
 
     /// Adds the given key-value properties to this node.
-    pub fn extend_properties(&mut self, properties: impl IntoIterator<Item = (String, String)>) {
+    pub fn extend_properties<K, V>(&mut self, properties: impl IntoIterator<Item = (K, V)>)
+    where
+        K: Into<String>,
+        V: Into<String>,
+    {
         for (key, value) in properties {
-            self.properties.entry(key).or_default().push(value)
+            self.properties
+                .entry(key.into())
+                .or_default()
+                .push(value.into())
         }
     }
 
@@ -133,29 +135,29 @@ impl Node {
     }
 
     /// Returns true if this node contains at least child with the given key.
-    pub fn has_child(&mut self, key: &str) -> bool {
+    pub fn has_child(&mut self, key: impl AsRef<str>) -> bool {
         self.children
-            .get(key)
+            .get(key.as_ref())
             .map_or(false, |values| !values.is_empty())
     }
 
     /// Sets the child value for a given key. If a child is already set, it is cleared.
-    pub fn set_child(&mut self, key: &str, child: Node) {
-        let values = self.children.entry(key.to_owned()).or_default();
+    pub fn set_child(&mut self, key: impl Into<String>, child: Node) {
+        let values = self.children.entry(key.into()).or_default();
         values.clear();
         values.push(child);
     }
 
     /// Sets an additional child value for a given key. Existing children are kept.
-    pub fn add_child(&mut self, key: &str, child: Node) {
-        self.children.entry(key.to_owned()).or_default().push(child)
+    pub fn add_child(&mut self, key: impl Into<String>, child: Node) {
+        self.children.entry(key.into()).or_default().push(child)
     }
 
     /// Removes all children for the given key and returns them.
-    pub fn clear_child(&mut self, key: &str) -> impl Iterator<Item = Node> {
-        match self.children.entry(key.to_owned()) {
-            hash_map::Entry::Occupied(entry) => entry.remove().into_iter(),
-            hash_map::Entry::Vacant(_) => vec::IntoIter::default(),
+    pub fn clear_child(&mut self, key: impl AsRef<str>) -> impl Iterator<Item = Node> {
+        match self.children.remove(key.as_ref()) {
+            Some(children) => children.into_iter(),
+            None => vec::IntoIter::default(),
         }
     }
 
@@ -167,9 +169,12 @@ impl Node {
     }
 
     /// Adds the given children to this node.
-    pub fn extend_children(&mut self, properties: impl IntoIterator<Item = (String, Node)>) {
+    pub fn extend_children<K>(&mut self, properties: impl IntoIterator<Item = (K, Node)>)
+    where
+        K: Into<String>,
+    {
         for (key, child) in properties {
-            self.children.entry(key).or_default().push(child)
+            self.children.entry(key.into()).or_default().push(child)
         }
     }
 }
