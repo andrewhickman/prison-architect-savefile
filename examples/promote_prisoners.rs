@@ -4,15 +4,6 @@ use anyhow::Context;
 use clap::Parser;
 use prison_architect_savefile::Node;
 
-/// Simple program to greet a person
-#[derive(Parser, Debug)]
-struct Args {
-    /// Path to the input prison file.
-    input: PathBuf,
-    /// Path to write the output prison file.
-    output: PathBuf,
-}
-
 fn main() -> anyhow::Result<()> {
     let programs = prison_architect_savefile::read(
         r#"C:\Program Files (x86)\Steam\steamapps\common\Prison Architect\main\data\reform_programs.txt"#,
@@ -164,6 +155,20 @@ fn main() -> anyhow::Result<()> {
             min_sec_spaces -= 1;
             "MinSec"
         } else {
+            if is_reformed {
+                println!(
+                    "no space for {}",
+                    prisoner
+                        .child("Bio")
+                        .unwrap()
+                        .property("Surname")
+                        .unwrap_or_else(|| prisoner
+                            .child("Bio")
+                            .unwrap()
+                            .property("Forname")
+                            .unwrap()),
+                );
+            }
             "Normal"
         };
 
