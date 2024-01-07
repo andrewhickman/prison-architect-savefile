@@ -1,15 +1,14 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::collections::HashMap;
 
 use anyhow::Context;
-use clap::Parser;
 use prison_architect_savefile::Node;
 
 fn main() -> anyhow::Result<()> {
     let programs = prison_architect_savefile::read(
-        r#"C:\Program Files (x86)\Steam\steamapps\common\Prison Architect\main\data\reform_programs.txt"#,
+        r#"C:\Users\andre\Repositories\prison-architect\main\data\reform_programs.txt"#,
     )?;
     let programs_dlc = prison_architect_savefile::read(
-        r#"C:\Program Files (x86)\Steam\steamapps\common\Prison Architect\main\data\reform_programs_dlc.txt"#,
+        r#"C:\Users\andre\Repositories\prison-architect\main\data\reform_programs_dlc.txt"#,
     )?;
     let mut program_scores = HashMap::new();
     for (_, program) in programs.children().chain(programs_dlc.children()) {
@@ -25,12 +24,10 @@ fn main() -> anyhow::Result<()> {
         } else {
             6
         };
-        program_scores.insert(program.property("Name").unwrap(), score);
+        program_scores.insert(program.property("Name").unwrap().to_owned(), score);
     }
 
-    let mut prison = prison_architect_savefile::read(
-        r#"C:\Users\andre\Repositories\pa\cloudsaves\felrock2.prison"#,
-    )?;
+    let mut prison = prison_architect_savefile::read(r#"cloudsaves\felrock2.prison"#)?;
 
     let mut prisoners: Vec<(&mut Node, u32, u32)> = prison
         .child_mut("Objects")
@@ -55,107 +52,56 @@ fn main() -> anyhow::Result<()> {
         .collect();
     prisoners.sort_by_key(|(_, _, rem)| *rem);
 
+    let total_drug_addicts = prisoners
+        .iter()
+        .filter(|(prisoner, _, _)| {
+            !is_insane(prisoner)
+                // && !is_death_row(prisoner)
+                && !is_very_deadly(prisoner)
+                && !is_gang_member(prisoner)
+                && !is_vulnerable(prisoner)
+                && is_drug_addict(prisoner)
+        })
+        .count();
+    let total_alcohol_addicts = prisoners
+        .iter()
+        .filter(|(prisoner, _, _)| {
+            !is_insane(prisoner)
+                // && !is_death_row(prisoner)
+                && !is_very_deadly(prisoner)
+                && !is_gang_member(prisoner)
+                && !is_vulnerable(prisoner)
+                && is_alcohol_addict(prisoner)
+        })
+        .count();
+    println!("{} drug addicts", total_drug_addicts);
+    println!("{} alcohol addicts", total_alcohol_addicts);
+
     let mut min_sec_spaces = 112;
-    prisoners.iter_mut().for_each(|(prisoner, remaining, _)| {
-        let mut score = 0;
-
-        for (name, program) in prisoner
-            .child("Experience")
-            .unwrap()
-            .child("Results")
-            .unwrap()
-            .children()
-        {
-            if let Some(count) = program.property("Passed") {
-                let count: u32 = count.parse().unwrap();
-                score += count * program_scores[name];
-            }
-        }
-
-        let work_areas = [
-            "WorkCook",
-            "WorkCleaner",
-            "WorkCraftsman",
-            "WorkLabourer",
-            "WorkRCS",
-        ];
-        let experience = prisoner
-            .child("Experience")
-            .unwrap()
-            .child("Experience")
-            .unwrap();
-        let mut experience_total: f64 = 0.0;
-        for area in work_areas {
-            if let Some(exp) = experience.property(area) {
-                let exp: f64 = exp.parse().unwrap();
-                experience_total += exp;
-            }
-        }
-
-        score += (experience_total / 0.5).floor() as u32;
-
-        let is_reformed = score >= 10;
-        let is_gang_member = prisoner
-            .child("Bio")
-            .unwrap()
-            .properties()
-            .any(|(key, value)| key == "Reputation" && value == "GangMember");
-        let is_deadly = (prisoner
-            .child("Bio")
-            .unwrap()
-            .properties()
-            .any(|(key, value)| key == "ReputationHigh" && value == "Volatile")
-            && prisoner
-                .child("Bio")
-                .unwrap()
-                .properties()
-                .any(|(key, value)| {
-                    matches!(key, "Reputation" | "ReputationHigh") && value == "Deadly"
-                }))
-            || (prisoner
-                .child("Bio")
-                .unwrap()
-                .properties()
-                .any(|(key, value)| {
-                    matches!(key, "Reputation" | "ReputationHigh") && value == "Volatile"
-                })
-                && prisoner
-                    .child("Bio")
-                    .unwrap()
-                    .properties()
-                    .any(|(key, value)| key == "ReputationHigh" && value == "Deadly"));
-        let is_addict = prisoner
-            .child("Needs")
-            .unwrap()
-            .child("Needs")
-            .unwrap()
-            .children()
-            .any(|(_, need)| matches!(need.property("Type"), Some("Drugs") | Some("Alcohol")));
-        let is_vulnerable = prisoner
-            .child("Bio")
-            .unwrap()
-            .properties()
-            .any(|(key, value)| {
-                matches!(key, "Reputation" | "ReputationHigh")
-                    && matches!(
-                        value,
-                        "Snitch" | "ExLaw" | "ExPrisonGuard" | "FederalWitness"
-                    )
-            });
-
-        let category = if is_deadly {
+    let mut drug_spaces = (total_drug_addicts as u32).min(16);
+    let mut alcohol_spaces = 16u32 - drug_spaces;
+    prisoners.iter_mut().for_each(|(prisoner, remaining, until_parole)| {
+        let category = if is_insane(prisoner) {
+            "Insane"
+        // } else if is_death_row(prisoner) {
+        //     "DeathRow"
+        } else if is_very_deadly(prisoner) {
             "SuperMax"
-        } else if is_gang_member {
-            "MaxSec"
-        } else if is_vulnerable {
+        } else if is_vulnerable(prisoner) {
             "Protected"
-        } else if is_addict {
+        } else if is_gang_member(prisoner) {
             "MaxSec"
-        } else if is_reformed && min_sec_spaces > 0 {
+        } else if is_drug_addict(prisoner) && drug_spaces > 0 {
+            drug_spaces -= 1;
+            "MaxSec"
+        } else if is_alcohol_addict(prisoner) && alcohol_spaces > 0 {
+            alcohol_spaces -= 1;
+            "MaxSec"
+        } else if is_reformed(prisoner, &program_scores) && min_sec_spaces > 0 {
             min_sec_spaces -= 1;
             "MinSec"
         } else {
-            if is_reformed {
+            if is_reformed(prisoner, &program_scores) {
                 println!(
                     "no space for {}",
                     prisoner
@@ -187,7 +133,13 @@ fn main() -> anyhow::Result<()> {
             prisoner.set_property("Category", category);
         }
 
-        if *remaining < 120 {
+        if is_deadly(prisoner) {
+            prisoner.set_property("MarkType", "1");
+        } else {
+            let _ = prisoner.clear_property("MarkType");
+        }
+
+        if *until_parole > 6000 {
             println!(
                 "{} prisoner {} ({}) due for release in {} hours",
                 prisoner.property("Category").unwrap(),
@@ -220,28 +172,140 @@ fn main() -> anyhow::Result<()> {
             }
         });
 
-    let electricity = prison.child_mut("Electricity").unwrap();
-    let upgraded_wires: Vec<_> = electricity
-        .children()
-        .map(|(key, value)| {
-            let mut parts = key.split(' ');
-            let x = parts.next().unwrap();
-            let y = parts.next().unwrap();
-            (format!("{} {} 2", x, y), value.clone())
-        })
-        .collect();
-    electricity.extend_children(upgraded_wires);
-
     let water = prison.child_mut("Water").unwrap();
     for (_, child) in &mut water.children_mut() {
         if let Some("2") = child.property("PipeType") {
-            child.set_property("PipeStatus", "2");
+            // child.set_property("PipeStatus", "2");
         }
         if let Some("true") = child.property("HotPipe") {
-            child.set_property("HotPipeStatus", "2");
+            // child.set_property("HotPipeStatus", "2");
         }
     }
 
-    prison.write(r#"C:\Users\andre\Repositories\pa\saves\after.prison"#)?;
+    prison.write(r#"saves\after.prison"#)?;
     Ok(())
+}
+
+fn is_insane(prisoner: &Node) -> bool {
+    prisoner.property("Category") == Some("Insane")
+}
+
+fn is_death_row(prisoner: &Node) -> bool {
+    prisoner.property("Category") == Some("DeathRow")
+}
+
+fn is_reformed(prisoner: &Node, program_scores: &HashMap<String, u32>) -> bool {
+    let mut score = 0;
+
+    for (name, program) in prisoner
+        .child("Experience")
+        .unwrap()
+        .child("Results")
+        .unwrap()
+        .children()
+    {
+        if let Some(count) = program.property("Passed") {
+            let count: u32 = count.parse().unwrap();
+            score += count * program_scores[name];
+        }
+    }
+
+    let work_areas = [
+        "WorkCook",
+        "WorkCleaner",
+        "WorkCraftsman",
+        "WorkLabourer",
+        "WorkRCS",
+    ];
+    let experience = prisoner
+        .child("Experience")
+        .unwrap()
+        .child("Experience")
+        .unwrap();
+    let mut experience_total: f64 = 0.0;
+    for area in work_areas {
+        if let Some(exp) = experience.property(area) {
+            let exp: f64 = exp.parse().unwrap();
+            experience_total += exp;
+        }
+    }
+
+    (score + (experience_total / 0.5).floor() as u32) >= 10
+}
+
+fn is_gang_member(prisoner: &Node) -> bool {
+    prisoner
+        .child("Bio")
+        .unwrap()
+        .properties()
+        .any(|(key, value)| key == "Reputation" && value == "GangMember")
+}
+
+fn is_very_deadly(prisoner: &Node) -> bool {
+    (prisoner
+        .child("Bio")
+        .unwrap()
+        .properties()
+        .any(|(key, value)| key == "ReputationHigh" && value == "Volatile")
+        && prisoner
+            .child("Bio")
+            .unwrap()
+            .properties()
+            .any(|(key, value)| {
+                matches!(key, "Reputation" | "ReputationHigh") && value == "Deadly"
+            }))
+        || (prisoner
+            .child("Bio")
+            .unwrap()
+            .properties()
+            .any(|(key, value)| {
+                matches!(key, "Reputation" | "ReputationHigh") && value == "Volatile"
+            })
+            && prisoner
+                .child("Bio")
+                .unwrap()
+                .properties()
+                .any(|(key, value)| key == "ReputationHigh" && matches!(value, "Deadly" | "Strong")))
+}
+
+fn is_deadly(prisoner: &Node) -> bool {
+    prisoner
+        .child("Bio")
+        .unwrap()
+        .properties()
+        .any(|(key, value)| matches!(key, "Reputation" | "ReputationHigh") && matches!(value, "Deadly"))
+}
+
+fn is_drug_addict(prisoner: &Node) -> bool {
+    prisoner
+        .child("Needs")
+        .unwrap()
+        .child("Needs")
+        .unwrap()
+        .children()
+        .any(|(_, need)| matches!(need.property("Type"), Some("Drugs")))
+}
+
+fn is_alcohol_addict(prisoner: &Node) -> bool {
+    prisoner
+        .child("Needs")
+        .unwrap()
+        .child("Needs")
+        .unwrap()
+        .children()
+        .any(|(_, need)| matches!(need.property("Type"), Some("Alcohol")))
+}
+
+fn is_vulnerable(prisoner: &Node) -> bool {
+    prisoner
+        .child("Bio")
+        .unwrap()
+        .properties()
+        .any(|(key, value)| {
+            matches!(key, "Reputation" | "ReputationHigh")
+                && matches!(
+                    value,
+                    "Snitch" | "ExLaw" | "ExPrisonGuard" | "FederalWitness"
+                )
+        })
 }

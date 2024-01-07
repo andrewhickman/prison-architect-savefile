@@ -1,9 +1,21 @@
+use std::collections::HashMap;
+
 use prison_architect_savefile::Node;
 
 fn main() -> anyhow::Result<()> {
-    let mut prison = prison_architect_savefile::read(
-        r#"C:\Users\andre\Repositories\pa\cloudsaves\felrock2.prison"#,
+    let mut prison = prison_architect_savefile::read(r#"cloudsaves\felrock2.prison"#)?;
+
+    let programs = prison_architect_savefile::read(
+        r#"C:\Users\andre\Repositories\prison-architect\main\data\reform_programs.txt"#,
     )?;
+    let programs_dlc = prison_architect_savefile::read(
+        r#"C:\Users\andre\Repositories\prison-architect\main\data\reform_programs_dlc.txt"#,
+    )?;
+    let definitions: HashMap<&str, &Node> = programs
+        .children()
+        .chain(programs_dlc.children())
+        .map(|(_, program)| (program.property("Name").unwrap(), program))
+        .collect();
 
     let reform = prison.child_mut("Reform").unwrap();
     let mut programs: Vec<_> = reform
@@ -20,6 +32,12 @@ fn main() -> anyhow::Result<()> {
             .parse::<u32>()
             .unwrap()
     });
+    programs.sort_by_key(|(_, program)| {
+        let definition = definitions[program.property("Type").unwrap()];
+        definition
+            .properties()
+            .any(|p| p.0 == "Property" && p.1 == "CanHireExternally")
+    });
 
     // programs.retain(|(_, program)| {
     //     program.property("Type") == Some("Methadone")
@@ -27,17 +45,10 @@ fn main() -> anyhow::Result<()> {
     // });
 
     reform.set_property("NextProgramId", programs.len().to_string());
-    for (i, (id, old_program)) in programs.iter_mut().enumerate() {
+    for (i, (id, program)) in programs.iter_mut().enumerate() {
         *id = format!("[i {}]", i);
 
-        let mut program = Node::new();
         program.set_property("Id", i.to_string());
-        program.set_property("Type", old_program.property("Type").unwrap());
-        program.set_property("StartHour", old_program.property("StartHour").unwrap());
-        program.set_property("Room.i", old_program.property("Room.i").unwrap());
-        program.set_property("Room.u", old_program.property("Room.u").unwrap());
-        program.set_property("ManualProgram", "true");
-        *old_program = program;
     }
 
     reform
@@ -45,6 +56,14 @@ fn main() -> anyhow::Result<()> {
         .unwrap()
         .extend_children(programs);
 
-    prison.write(r#"C:\Users\andre\Repositories\pa\saves\after.prison"#)?;
+    // prison.set_property("CheatsEnabled", "true");
+    // prison
+    //     .child_mut("Objects")
+    //     .unwrap()
+    //     .children_mut()
+    //     .filter(|(_, obj)| obj.property("Type") == Some("Tree"))
+    //     .for_each(|(_, obj)| obj.set_property("Natural", "true"));
+
+    prison.write(r#"saves\after.prison"#)?;
     Ok(())
 }

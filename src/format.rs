@@ -103,16 +103,18 @@ where
 fn test() {
     use std::collections::HashMap;
 
+    use indexmap::IndexMap;
+
     let node = Node {
-        properties: HashMap::from_iter([("foo".to_owned(), vec!["hello, world!".to_owned()])]),
-        children: HashMap::from_iter([(
+        properties: IndexMap::from_iter([("foo".to_owned(), vec!["hello, world!".to_owned()])]),
+        children: IndexMap::from_iter([(
             "bar".to_owned(),
             vec![Node {
-                properties: HashMap::from_iter([(
+                properties: IndexMap::from_iter([(
                     "baz".to_owned(),
                     vec!["one\n\"two\"".to_owned()],
                 )]),
-                children: HashMap::default(),
+                children: IndexMap::default(),
             }],
         )]),
     };

@@ -3,7 +3,9 @@ mod parse;
 
 pub use crate::parse::ParseError;
 
-use std::{collections::HashMap, fmt, io, path::Path, vec};
+use std::{fmt, io, path::Path, vec};
+
+use indexmap::IndexMap;
 
 /// Reads a prison architect savefile from the file system.
 pub fn read(path: impl AsRef<Path>) -> io::Result<Node> {
@@ -13,8 +15,8 @@ pub fn read(path: impl AsRef<Path>) -> io::Result<Node> {
 /// A single element of a savefile.
 #[derive(Default, Clone, PartialEq, Eq)]
 pub struct Node {
-    properties: HashMap<String, Vec<String>>,
-    children: HashMap<String, Vec<Node>>,
+    properties: IndexMap<String, Vec<String>>,
+    children: IndexMap<String, Vec<Node>>,
 }
 
 impl Node {
@@ -87,7 +89,7 @@ impl Node {
 
     /// Removes all property values for this node and returns them.
     pub fn clear_properties(&mut self) -> impl Iterator<Item = (String, String)> + '_ {
-        self.properties.drain().flat_map(|(key, properties)| {
+        self.properties.drain(..).flat_map(|(key, properties)| {
             properties
                 .into_iter()
                 .map(move |property| (key.clone(), property))
@@ -164,7 +166,7 @@ impl Node {
     /// Removes all children for this node and returns them.
     pub fn clear_children(&mut self) -> impl Iterator<Item = (String, Node)> + '_ {
         self.children
-            .drain()
+            .drain(..)
             .flat_map(|(key, children)| children.into_iter().map(move |child| (key.clone(), child)))
     }
 

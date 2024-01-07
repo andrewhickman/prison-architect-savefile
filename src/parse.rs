@@ -1,5 +1,7 @@
 use core::fmt;
-use std::{collections::HashMap, error::Error, str::FromStr};
+use std::{error::Error, str::FromStr};
+
+use indexmap::IndexMap;
 
 use crate::Node;
 
@@ -27,8 +29,8 @@ struct Parser<'a> {
 impl<'a> Parser<'a> {
     fn parse_node(&mut self, child: bool) -> Result<Node, ParseError> {
         let mut node = Node {
-            properties: HashMap::new(),
-            children: HashMap::new(),
+            properties: IndexMap::new(),
+            children: IndexMap::new(),
         };
 
         loop {
